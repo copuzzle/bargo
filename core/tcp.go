@@ -87,6 +87,11 @@ func (t *TcpServer) onTcpConnection(conn net.Conn) {
 		return
 	}
 	defer remoteConn.Close()
+	// 设置连接超时限制
+	err = remoteConn.SetDeadline(time.Now().Add(time.Second * util.TIMEOUT))
+	if err != nil {
+		return
+	}
 
 	// 开始转发
 	if t.isClient() {

@@ -3,14 +3,12 @@ package protocol
 import (
 	"net"
 	"io"
-	"time"
 	"fmt"
 	"encoding/binary"
 	"math/rand"
 	crand "crypto/rand"
 
 	"github.com/sinchie/bargo/encrypt"
-	"github.com/sinchie/bargo/util"
 )
 
 const (
@@ -93,11 +91,6 @@ func (b *Bars) Write(conn net.Conn, encryptor encrypt.Encryptor) error {
 	if err != nil {
 		return err
 	}
-	// 超时设置
-	err = conn.SetDeadline(time.Now().Add(time.Second * util.TIMEOUT))
-	if err != nil {
-		return err
-	}
 
 	return nil
 }
@@ -107,11 +100,6 @@ func (b *Bars) Read(conn net.Conn, encryptor encrypt.Encryptor) (error) {
 	// 读取包长度 混淆长度
 	buf := make([]byte, 4)
 	_, err := io.ReadFull(conn, buf)
-	if err != nil {
-		return err
-	}
-	// 超时设置
-	err = conn.SetDeadline(time.Now().Add(time.Second * util.TIMEOUT))
 	if err != nil {
 		return err
 	}
