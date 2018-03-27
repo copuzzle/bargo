@@ -37,19 +37,17 @@ func NewAesGcm(key []byte) (*AesGcm, error) {
 }
 
 // 加密
-func (a *AesGcm) Encode(plaintext []byte) ([]byte, error) {
+func (a *AesGcm) Encode(plaintext []byte) ([]byte) {
 	// 计算密文长度 = 明文长度 + 随机数长度 + 校验码长度
 	cap := len(plaintext) + 12 + 16
 	// 获得随机数
 	nonce := make([]byte, 12, cap)
-	_, err := io.ReadFull(rand.Reader, nonce)
-	if err != nil {
-		return nil, err
-	}
+	io.ReadFull(rand.Reader, nonce)
+
 	// 生成密文
 	dst := a.aead.Seal(nil, nonce, plaintext, nil)
 	dst = append(nonce, dst...)
-	return dst, nil
+	return dst
 }
 
 // 解密

@@ -115,10 +115,7 @@ func (u *UdpServer) onUdpData(recvData []byte, clientAddr net.Addr) {
 	// 发送信息
 	if u.isClient() {
 		// 客户端加密发送
-		recvData, err = u.encryptor.Encode(recvData)
-		if err != nil {
-			return
-		}
+		recvData = u.encryptor.Encode(recvData)
 		remoteSocket.Write(recvData)
 	} else {
 		remoteSocket.Write(sendData)
@@ -188,7 +185,7 @@ func (u *UdpServer) newRemoteSocket(clientAddr net.Addr, dstAddr string, headDat
 				sendData = make([]byte, headDataLen+n)
 				copy(sendData[:headDataLen], headData)
 				copy(sendData[headDataLen:], buf[:n])
-				sendData, err = u.encryptor.Encode(sendData)
+				sendData = u.encryptor.Encode(sendData)
 				if err != nil {
 					return
 				}

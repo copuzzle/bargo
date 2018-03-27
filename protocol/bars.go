@@ -33,12 +33,12 @@ const (
 	+-------------+------------------+----------------+--------+------+
 	|      2      |         2        |       ...      |    1   | ...  |
 	+-------------+------------------+----------------+--------+------+
-	|                                                 |   encryption  |
+	|             |                     encryption                    |
 	+-------------+------------------+----------------+--------+------+
 
 	o Pack Length: 数据包总长度 不包含本身（小端序）
 	o Confusion Length: 混淆数据长度 不包含本身（小端序）
-	o Confusion Data: 混淆数据内容 后面的数据都是加密过的密文
+	o Confusion Data: 混淆数据内容
 	o Type: 数据类型
 	o Data: 荷载数据
 */
@@ -48,46 +48,64 @@ type Bars struct {
 	ConfusionData   []byte
 	Type            uint8
 	Data            []byte
+
+	encrypt 		encrypt.Encryptor
+	conn 			net.Conn
+}
+
+// 获得bars
+func NewBars(conn net.Conn, encryptor encrypt.Encryptor) *Bars {
+	b := new(Bars)
+	b.encrypt = encryptor
+	b.conn = conn
+
+	return b
+}
+
+// 设置数据和类型
+func (b *Bars) SetData(typ uint8, data []byte) {
+	b.Type = typ
+	b.Data = data
 }
 
 // 设置混淆数据
-func (b *Bars) setConfusion() error {
+func (b *Bars) makeConfusion() {
 	// 混淆长度
 	b.ConfusionLength = uint16(BARS_CONFUSION_MIN + rand.Intn(BARS_CONFUSION_MAX-BARS_CONFUSION_MIN))
 	// 混淆数据
 	b.ConfusionData = make([]byte, b.ConfusionLength)
-	_, err := io.ReadFull(crand.Reader, b.ConfusionData)
-	if err != nil {
-		return err
-	}
-	return nil
+	// 填充
+	io.ReadFull(crand.Reader, b.ConfusionData)
+}
+
+// 数据打包
+func (b *Bars) pack() []byte {
+	// 生成混淆数据
+	b.makeConfusion()
+	// 组合加密数据  混淆长度位(2) + 混淆长度 + type位(1) + 数据长度
+	data := make([]byte, 2, 2 + int(b.ConfusionLength) + 1 + len(b.Data))
+	binary.LittleEndian.PutUint16(data[:2], b.ConfusionLength)
+	data = append(data, b.ConfusionData...)
+	data = append(data, b.Type)
+	data = append(data, b.Data...)
+	// 加密
+	dst := b.encrypt.Encode(data)
+	// 计算包长
+	b.PackLength = uint16(len(dst))
+	// 组合数据
+	sendData := make([]byte, 2, 2+b.PackLength)
+	binary.LittleEndian.PutUint16(sendData[:2], b.PackLength)
+	sendData = append(sendData, dst...)
+
+	return sendData
 }
 
 // 发送数据包
-func (b *Bars) Write(conn net.Conn, encryptor encrypt.Encryptor) error {
-	// 生成混淆数据
-	err := b.setConfusion()
-	if err != nil {
-		return err
-	}
-	// 加密数据
-	data := make([]byte, 1 + len(b.Data))
-	data[0] = b.Type
-	copy(data[1:], b.Data)
-	dst, err := encryptor.Encode(data)
-	if err != nil {
-		return err
-	}
-	// 计算包长 = 混淆长度位（2） + 混淆数据长度 + 密文长度
-	b.PackLength = 2 + b.ConfusionLength + uint16(len(dst))
+func (b *Bars) Send() error {
 	// 组合数据
-	sendData := make([]byte, 2+b.PackLength)
-	binary.LittleEndian.PutUint16(sendData[0:2], b.PackLength)
-	binary.LittleEndian.PutUint16(sendData[2:4], b.ConfusionLength)
-	copy(sendData[4:b.ConfusionLength+4], b.ConfusionData)
-	copy(sendData[b.ConfusionLength+4:], dst)
+	sendData := b.pack()
 	// 发送数据
-	_, err = conn.Write(sendData)
+	_, err := b.conn.Write(sendData)
 	if err != nil {
 		return err
 	}
@@ -96,10 +114,10 @@ func (b *Bars) Write(conn net.Conn, encryptor encrypt.Encryptor) error {
 }
 
 // 按照协议解析读取数据包
-func (b *Bars) Read(conn net.Conn, encryptor encrypt.Encryptor) (error) {
-	// 读取包长度 混淆长度
-	buf := make([]byte, 4)
-	_, err := io.ReadFull(conn, buf)
+func (b *Bars) Recv() (error) {
+	// 读取包长度
+	buf := make([]byte, 2)
+	_, err := io.ReadFull(b.conn, buf)
 	if err != nil {
 		return err
 	}
@@ -110,22 +128,23 @@ func (b *Bars) Read(conn net.Conn, encryptor encrypt.Encryptor) (error) {
 	if b.PackLength > packMaxLen {
 		return fmt.Errorf("package too long")
 	}
-	// 混淆长度
-	b.ConfusionLength = binary.LittleEndian.Uint16(buf[2:])
-	// 读取包剩余的数据
-	buf = make([]byte, b.PackLength-2)
-	_, err = io.ReadFull(conn, buf)
+	// 读取包数据
+	buf = make([]byte, b.PackLength)
+	_, err = io.ReadFull(b.conn, buf)
 	if err != nil {
 		return err
 	}
-	b.ConfusionData = buf[:b.ConfusionLength]
 	// 解密数据
-	data, err := encryptor.Decode(buf[b.ConfusionLength:])
+	data, err := b.encrypt.Decode(buf)
 	if err != nil {
 		return err
 	}
-	b.Type = data[0]
-	b.Data = data[1:]
+	// 混淆长度
+	b.ConfusionLength = binary.LittleEndian.Uint16(data[:2])
+	// 类型
+	b.Type = data[2+b.ConfusionLength]
+	// 内容
+	b.Data = data[2+b.ConfusionLength+1:]
 
 	return nil
 }

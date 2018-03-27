@@ -18,9 +18,7 @@ func TcpPipe(nomalConn, barsConn net.Conn, encryptor encrypt.Encryptor)  {
 	closeChan := make(chan error, 2)
 
 	go func() {
-		bars := &protocol.Bars{
-			Type: protocol.BARS_TYPE_COPY,
-		}
+		bars := protocol.NewBars(barsConn, encryptor)
 		// 缓存池中申请内存
 		buf := make([]byte, protocol.READBUFF_SIZE)
 		// 错误
@@ -42,8 +40,8 @@ func TcpPipe(nomalConn, barsConn net.Conn, encryptor encrypt.Encryptor)  {
 			if err != nil || nr <= 0 {
 				break
 			}
-			bars.Data = buf[:nr]
-			err = bars.Write(barsConn, encryptor)
+			bars.SetData(protocol.BARS_TYPE_COPY, buf[:nr])
+			err = bars.Send()
 			if err != nil {
 				break
 			}
@@ -52,7 +50,7 @@ func TcpPipe(nomalConn, barsConn net.Conn, encryptor encrypt.Encryptor)  {
 	}()
 
 	go func() {
-		bars := &protocol.Bars{}
+		bars := protocol.NewBars(barsConn, encryptor)
 		// 错误
 		var err error
 		for {
@@ -66,7 +64,7 @@ func TcpPipe(nomalConn, barsConn net.Conn, encryptor encrypt.Encryptor)  {
 				break
 			}
 			// 客户端到服务端的转发
-			err = bars.Read(barsConn, encryptor)
+			err = bars.Recv()
 			if err != nil {
 				break
 			}

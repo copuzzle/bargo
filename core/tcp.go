@@ -103,9 +103,6 @@ func (t *TcpServer) onTcpConnection(conn net.Conn) {
 
 // 获得对端连接
 func (t *TcpServer) getRemoteConn(conn net.Conn) (net.Conn, error) {
-	// 获得Bars协议
-	bars := new(protocol.Bars)
-
 	if t.isClient() { // 客户端
 		// socks5协议互交
 		requestAddr, err := protocol.HandleSocks5Request(t.cfg.ClientSocksPort, conn)
@@ -118,9 +115,9 @@ func (t *TcpServer) getRemoteConn(conn net.Conn) (net.Conn, error) {
 			return nil, err
 		}
 		// 发送请求地址
-		bars.Type = protocol.BARS_TYPE_LINK
-		bars.Data = []byte(requestAddr)
-		err = bars.Write(remoteConn, t.encryptor)
+		bars := protocol.NewBars(remoteConn, t.encryptor)
+		bars.SetData(protocol.BARS_TYPE_LINK, []byte(requestAddr))
+		err = bars.Send()
 		if err != nil {
 			return nil, err
 		}
@@ -132,7 +129,8 @@ func (t *TcpServer) getRemoteConn(conn net.Conn) (net.Conn, error) {
 		return remoteConn, err
 	} else { // 服务端
 		// 读取客户端的request信息
-		err := bars.Read(conn, t.encryptor)
+		bars := protocol.NewBars(conn, t.encryptor)
+		err := bars.Recv()
 		if err != nil {
 			return nil, err
 		}
