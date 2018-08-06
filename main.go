@@ -6,6 +6,7 @@ import (
 	"github.com/sinchie/bargo/util"
 	"github.com/sinchie/bargo/encrypt"
 	"github.com/sinchie/bargo/core"
+	"github.com/sinchie/bargo/util/pac"
 )
 
 func main()  {
@@ -25,6 +26,7 @@ func main()  {
 	}
 	// 开启udp服务
 	go core.NewUdpServer(cfg, encryptor).Run()
+	go pac.PacHttpServer()
 	// 开启tcp服务
 	core.NewTcpServer(cfg, encryptor).Run()
 }
